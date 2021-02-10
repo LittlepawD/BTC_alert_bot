@@ -1,7 +1,7 @@
+import pickle
 import requests as r
 import coinbot
 import multiprocessing as mp
-import time
 
 # Features:
 
@@ -19,6 +19,12 @@ def get_price():
             return float(dic["data"]["amount"])
         else: 
             raise ConnectionError("Could not connect to API server.")
+
+def load_alerts():
+    pass
+    # lock here
+    # with open(coinbot.ALERTS_FILE, "rb"):
+    #     pickle.load
 
 def mainloop():
     print(get_price())

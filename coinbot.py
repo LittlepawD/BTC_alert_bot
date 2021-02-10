@@ -1,4 +1,9 @@
+from main import ALERTS_FILE
+from alerts import Alert
+
 import telebot, pickle
+
+ALERTS_FILE = "alerts_dic.bin"
 
 with open("keys.bin", "rb") as f:       
     T_KEY, B_KEY, C_KEY = pickle.load(f)
@@ -7,6 +12,8 @@ class CoinBot (telebot.TeleBot):
     def __init__(self, token, lock):
         super().__init__(token)
         self.lock = lock
+
+
 
 def start_bot(lock):
     bot = CoinBot(T_KEY, lock)
