@@ -1,6 +1,6 @@
 import requests as r
 import coinbot
-from multiprocessing import Process
+import multiprocessing as mp
 import time
 
 # Features:
@@ -28,7 +28,8 @@ def mainloop():
     # TODO: Both bot and mainloop access alerts list. Make sure they do not conflict!
 
 if __name__ == "__main__":
-    bot_process = Process(target = coinbot.start_bot)
+    lock = mp.Lock()
+    bot_process = mp.Process(target = coinbot.start_bot, kwargs={"lock": lock})
     bot_process.start()
 
     cont = True
@@ -37,7 +38,6 @@ if __name__ == "__main__":
             mainloop()
         except KeyboardInterrupt:
             cont = False
-
     print("Mainloop exited")
     bot_process.terminate()
     print("Bot process terminated")
