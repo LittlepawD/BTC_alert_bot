@@ -1,4 +1,3 @@
-from main import ALERTS_FILE
 from alerts import Alert
 
 import telebot, pickle

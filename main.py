@@ -1,4 +1,4 @@
-import pickle
+import pickle, time
 import requests as r
 import coinbot
 import multiprocessing as mp
