@@ -1,7 +1,7 @@
-from main import ALERTS_FILE
 from alerts import Alert
+import multiprocessing as mp
 
-import telebot, pickle
+import telebot, pickle, time
 
 ALERTS_FILE = "alerts_dic.bin"
 
@@ -9,15 +9,13 @@ with open("keys.bin", "rb") as f:
     T_KEY, B_KEY, C_KEY = pickle.load(f)
 
 class CoinBot (telebot.TeleBot):
-    def __init__(self, token, lock):
+    def __init__(self, token):
         super().__init__(token)
-        self.lock = lock
 
 
+def define_bot(lock):
+    bot = CoinBot(T_KEY)
 
-def start_bot(lock):
-    bot = CoinBot(T_KEY, lock)
- 
     help_text = "this is a help text"
 
     @bot.message_handler(commands = ["start", "help"])
@@ -35,5 +33,33 @@ def start_bot(lock):
     @bot.message_handler(commands = ["remove_alert"])
     def handle_remove_alert(message):
         pass
-    
+
+    return bot
+
+def bot_start(bot):
     bot.polling()
+
+def check_alerts():
+    pass
+
+if __name__=='__main__':
+    lock = mp.Lock()
+    this_bot = define_bot(lock)
+    bot_thread = mp.Process(target=bot_start, args=(this_bot,))
+    bot_thread.start()
+
+    cont = True
+    while cont:
+        try:
+            # Mainloop:
+            check_alerts(alerts, bot)
+            print("checked")
+            time.sleep(2)
+            
+        except KeyboardInterrupt:
+            cont = False
+
+    bot.stop_polling()
+    print("Stopped polling")
+    bot_thread.join()
+ 

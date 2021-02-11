@@ -34,9 +34,6 @@ def mainloop():
     # TODO: Both bot and mainloop access alerts list. Make sure they do not conflict!
 
 if __name__ == "__main__":
-    lock = mp.Lock()
-    bot_process = mp.Process(target = coinbot.start_bot, kwargs={"lock": lock})
-    bot_process.start()
 
     cont = True
     while cont:
