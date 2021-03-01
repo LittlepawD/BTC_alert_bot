@@ -11,6 +11,19 @@ class Alert:
         self.price = price
         self.notify = notify
         self.was_notified = False
+    
+    def set_price(self, price: str or int or float):
+        if type(price) == str and "," in price:
+            price = price.replace(",", ".")
+        try:
+            price = float(price)
+        except ValueError as err:
+            raise ValueError("Price string cannot be converted to number")
+        if  price <= 0:
+            raise ValueError("Price cannot be negative or zero")
+        if price > 4294967295:
+            raise ValueError("Price is out of range")
+        self.price = round(price, 2)
 
     def __str__(self) -> str:
         return f"Alert {self.id}: Notify {self.owner} {self.notify} {self.price} EUR."
