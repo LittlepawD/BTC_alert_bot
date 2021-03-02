@@ -6,6 +6,11 @@ ALERTS_FILE = "alerts_dic.bin"
 
 class Alert:
     def __init__(self, id, owner, price = None, notify = None) -> None:
+        """ 
+        Alert data structure. 
+
+        Notify: Specifies when to notify the user. Options are 'above', 'below', 'on' 
+        """
         self.id = id
         self.owner = owner
         self.price = price
@@ -39,6 +44,7 @@ def load_alerts(file = ALERTS_FILE) -> dict:
 def save_alerts(alerts, file=ALERTS_FILE):
     with open(file, "wb") as f:
         pickle.dump(alerts, f)
+    print("Alerts saved")
     
 
 def check_alerts(alerts):
