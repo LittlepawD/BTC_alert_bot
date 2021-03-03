@@ -15,9 +15,13 @@ class CoinBot (telebot.TeleBot):
     def __init__(self, token):
         super().__init__(token)
         self.alerts = al.load_alerts()
-        # TODO make loading and saving this set possible in case of crash?
         # this is for saving message id used in process of setting new alert
+        # TODO rename sensibly
         self.alert_setting_set = set()
+        self.await_callback_set = set()
+
+        # this is used for removing alerts
+        self.await_alert_remove_set = set()
 
     def notify_alert(self, alert: al.Alert, cur_price):
         message = f"BTC Alert! Price is now {cur_price} EUR, {alert.notify} your {alert.price} alert."
@@ -51,6 +55,26 @@ def display_alerts(message):
             reply += f"Notify {alert.notify} {alert.price} EUR\n"
     bot.reply_to(message, reply)
 
+@bot.message_handler(commands = ["remove_alert"])
+def handle_remove_alert(message: types.Message):
+    # TODO implement alert removal
+    markup = types.InlineKeyboardMarkup()
+    bt_list = []
+    for user_alert in [alert for alert in bot.alerts.values() if alert.owner == message.chat.id]:
+        print(user_alert)
+        bt_list.append(
+            types.InlineKeyboardButton(text=user_alert.print_for_user(), callback_data=user_alert.id)
+        )
+    print(bt_list)
+    markup.add(*bt_list)
+    msg = bot.reply_to(message, "What alert do you want to remove?", reply_markup = markup)
+    bot.await_alert_remove_set.add(msg.message_id)
+
+@bot.message_handler(commands= ["price"])
+def send_price(message):
+    reply = f"Current price is {al.get_price()} EUR for BTC."
+    bot.reply_to(message, reply)
+
 @bot.message_handler(commands = ["set_alert"])
 def set_alert(message):
     markup = types.ForceReply()
@@ -59,9 +83,9 @@ def set_alert(message):
     # save sent message id to wait for the reply
     bot.alert_setting_set.add(sent_msg.message_id)
 
+# FIXME this causes an exception if message that isnt reply wasn't handled by previous handlers
 @bot.message_handler(func= lambda message: message.reply_to_message.message_id in bot.alert_setting_set)
 def set_alert_step2(message: telebot.types.Message):
-    print("setting step 2")
     new_id = message.message_id + message.chat.id
     bot.alerts[new_id] = al.Alert(new_id, message.chat.id)
     try:
@@ -77,9 +101,9 @@ def set_alert_step2(message: telebot.types.Message):
         markup = types.InlineKeyboardMarkup()
         bt_a = types.InlineKeyboardButton("Above", callback_data = "a" + str(new_id))
         bt_b = types.InlineKeyboardButton("Below", callback_data = "b" + str(new_id))
-        bt_c = types.InlineKeyboardButton("On", callback_data = "o" + str(new_id))
-        markup.row(bt_c, bt_a, bt_b)
-        bot.send_message(bot.alerts[new_id].owner, "When do you want to be notified?", reply_markup=markup)
+        markup.row(bt_a, bt_b)
+        msg = bot.send_message(bot.alerts[new_id].owner, "When do you want to be notified?", reply_markup=markup)
+        bot.await_callback_set.add(msg.message_id)
 
     except ValueError as err:
         print(f"While setting new alert, following error was handled: \n{err}")
@@ -90,11 +114,10 @@ def set_alert_step2(message: telebot.types.Message):
 
     bot.alert_setting_set.remove(message.reply_to_message.message_id)
 
-    # TODO step 3 where notify above or below is determined
-
-@bot.callback_query_handler(func = lambda query: True)
+# TODO anwser callbacks that dont pass handler too, so they dont have to timeout
+@bot.callback_query_handler(func = lambda query: query.message.message_id in bot.await_callback_set)
 def alert_callback_handler(query: types.CallbackQuery):
-    # TODO Make triggering inline keyboard multiple times impossible
+    print(query.message.message_id)
     option = query.data[0]
     alert_id = int(query.data[1:])
     bot.answer_callback_query(query.id)
@@ -102,10 +125,8 @@ def alert_callback_handler(query: types.CallbackQuery):
         bot.alerts[alert_id].notify = "above"
     elif option == "b":
         bot.alerts[alert_id].notify = "below"
-    elif option == "o":
-        bot.alerts[alert_id].notify = "on"
     else:
-        logging.warning("Got an unexpected anwser in alert_callback_handler: {option}")
+        logging.error("Got an unexpected anwser in alert_callback_handler: {option}")
         return
     # save alerts here
     lock.acquire()
@@ -115,15 +136,19 @@ def alert_callback_handler(query: types.CallbackQuery):
     print(f"Updated {alert}")
     bot.send_message(alert.owner, f"Saved. You will be notified {alert.notify} {alert.price} EUR.")
 
+@bot.callback_query_handler(func = lambda query: query.message.message_id in bot.await_alert_remove_set)
+def alert_remove_callback_handler(query: types.CallbackQuery):
+    bot.answer_callback_query(query.id)
 
-@bot.message_handler(commands = ["remove_alert"])
-def handle_remove_alert(message):
-    pass
+    if query.data in bot.alerts:
+        # FIXME looks like this condition doesnt work ok
+        removed = bot.alerts.pop(query)
+        bot.send_message(removed.owner, f'Alert "{removed.print_for_user} was removed."')
 
-@bot.message_handler(commands= ["price"])
-def send_price(message):
-    reply = f"Current price is {al.get_price()} EUR for BTC."
-    bot.reply_to(message, reply)
+        lock.acquire()
+        al.save_alerts(bot.alerts)
+        lock.release()
+    
 
 def bot_start():
     bot.polling()
@@ -147,16 +172,25 @@ if __name__=='__main__':
 
             cur_price = al.get_price()
             save_flag = False
-            # TODO check notified alerts too, if they go past the value update was_notified
-            for alert in [alert for alert in alerts.values() if not alert.was_notified]:
-                if alert.notify == "above":
-                    if cur_price > alert.price:
-                        bot.notify_alert(alert, cur_price)
-                        save_flag = True
-                elif alert.notify == "below":
-                    if cur_price < alert.price:
-                        bot.notify_alert(alert, cur_price)
-                        save_flag = True
+            for alert in alerts.values():
+                if not alert.was_notified:
+                    if alert.notify == "above":
+                        if cur_price > alert.price:
+                            bot.notify_alert(alert, cur_price)
+                            save_flag = True
+                    elif alert.notify == "below":
+                        if cur_price < alert.price:
+                            bot.notify_alert(alert, cur_price)
+                            save_flag = True
+                else:
+                    if alert.notify == "above":
+                        if cur_price < alert.price:
+                            alert.was_notified = False
+                            save_flag = True
+                    elif alert.notify == "below":
+                        if cur_price > alert.price:
+                            alert.was_notified = False
+                            save_flag = True
            
             if save_flag:
                 lock.acquire()

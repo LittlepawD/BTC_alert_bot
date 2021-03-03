@@ -29,6 +29,9 @@ class Alert:
         if price > 4294967295:
             raise ValueError("Price is out of range")
         self.price = round(price, 2)
+    
+    def print_for_user(self):
+        return f"Notify {self.notify} {self.price} EUR."
 
     def __str__(self) -> str:
         return f"Alert {self.id}: Notify {self.owner} {self.notify} {self.price} EUR."
