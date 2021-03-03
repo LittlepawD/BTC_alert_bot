@@ -16,19 +16,9 @@ class Alert:
         self.price = price
         self.notify = notify
         self.was_notified = False
-    
+
     def set_price(self, price: str or int or float):
-        if type(price) == str and "," in price:
-            price = price.replace(",", ".")
-        try:
-            price = float(price)
-        except ValueError as err:
-            raise ValueError("Price string cannot be converted to number")
-        if  price <= 0:
-            raise ValueError("Price cannot be negative or zero")
-        if price > 4294967295:
-            raise ValueError("Price is out of range")
-        self.price = round(price, 2)
+        pass
     
     def print_for_user(self):
         return f"Notify {self.notify} {self.price} EUR."
@@ -38,6 +28,20 @@ class Alert:
 
     def __repr__(self) -> str:
         return f"Alert {self.id} for {self.owner}"
+
+def convert_str_price_to_float(price: str) -> float:
+    if "," in price:
+        price = price.replace(",", ".")
+    try:
+        price = float(price)
+    except ValueError as err:
+        raise ValueError("Price string cannot be converted to number")
+
+    if  price <= 0:
+        raise ValueError("Price cannot be negative or zero")
+    if price > 4294967295:
+        raise ValueError("Price is out of range")
+    return round(price, 2)
 
 def load_alerts(file = ALERTS_FILE) -> dict:
     with open(file, "rb") as f:
