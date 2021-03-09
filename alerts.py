@@ -16,9 +16,6 @@ class Alert:
         self.price = price
         self.notify = notify
         self.was_notified = False
-
-    def set_price(self, price: str or int or float):
-        pass
     
     def print_for_user(self):
         return f"Notify {self.notify} {self.price} EUR."

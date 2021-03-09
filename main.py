@@ -13,13 +13,15 @@ with open("keys.bin", "rb") as f:
 
 bot = cb.CoinBot(T_KEY)
 lock = mp.Lock()
+logging.basicConfig(filename="log.log", level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s', datefmt='%d-%m-%y %H:%M:%S')
 
 # TODO simplify commands names
 
 @bot.message_handler(commands = ["start", "help"])
 def handle_start_help(message):
     help_text = """
-    This bot is designed to help you track Bitcoin price.
+    This bot is designed to help you track Bitcoin price. You get a notification once the Bitcoin price gets above or below the set alert.
+
     Use /set_alert to set new alert.
     Use /alerts to see your active alerts.
     Use /remove_alert to remove specified alert.
@@ -65,12 +67,12 @@ def set_alert(message):
 @bot.message_handler(func = bot.is_set_alert_step2_reply)
 def set_alert_step2(message: types.Message):
     # FIXME Make this mess readable, break it down!
-    new_id = message.message_id + message.chat.id
     try:
-        first_word = message.text.split(" ")[0]
-        price = al.convert_str_price_to_float(first_word)
+        price_str = message.text.split(" ")[0]
+        price = al.convert_str_price_to_float(price_str)
+        new_id = message.message_id + message.chat.id
         bot.alerts[new_id] = al.Alert(new_id, message.chat.id, price)
-        print("\tNew " + str(bot.alerts[new_id]))
+        logging.info(f"New alert {bot.alerts[new_id]}")
 
         lock.acquire()
         al.save_alerts(bot.alerts)
@@ -86,7 +88,7 @@ def set_alert_step2(message: types.Message):
         bot.await_callback_set.add(msg.message_id)
 
     except ValueError as err:
-        print(f"While setting new alert, following error was handled: \n{err}")
+        logging.info(f"While setting new alert, following error was handled: \n{err}")
         markup = types.ForceReply()
         send_msg = "I can't set the alert to that price. I need you to send a positive number. Please try again"
         sent_msg = bot.reply_to(message, send_msg, reply_markup = markup)
@@ -107,7 +109,7 @@ def alert_callback_handler(query: types.CallbackQuery):
         logging.error("Got an unexpected anwser in alert_callback_handler: {option}")
         return
     alert = bot.alerts[alert_id]
-    print(f"Updated {alert}")
+    logging.info(f"Updated {alert}: {option}.")
     bot.send_message(alert.owner, f"Saved. You will be notified {alert.notify} {alert.price} EUR.")
     lock.acquire()
     al.save_alerts(bot.alerts)
@@ -118,15 +120,18 @@ def alert_remove_callback_handler(query: types.CallbackQuery):
     bot.answer_callback_query(query.id)
     remove_alert_id = int(query.data)
     removed_alert = bot.alerts.pop(remove_alert_id)
-    bot.send_message(removed_alert.owner, f'Alert "{removed_alert.print_for_user()} was removed."')
-    # Important note: After this, the inline keyboard is still active and more alerts can be removed.
-    # Consider deactivating it eventually?
-    # Also, if already removed alert is clicked it results in an error, 
-    # Also, tracking set can grow a lot. It is reset on restart tho.
+    logging.info(f"Removed alert {removed_alert}")
+    bot.send_message(removed_alert.owner, f'Alert "{removed_alert.print_for_user()}" was removed.')
+    bot.await_alert_remove_set.remove(query.message.message_id)
 
     lock.acquire()
     al.save_alerts(bot.alerts)
     lock.release()
+
+@bot.message_handler(func = lambda message: "OwO" in message.text)
+def easter_egg(message: types.Message):
+    bot.reply_to(message, "_OwO what's this?_", parse_mode="MarkdownV2")
+    logging.info(f"User {message.chat.id} OwOed.")
 
 # Anwser all unhandled callback queries
 @bot.callback_query_handler(lambda query: True)
@@ -135,13 +140,15 @@ def unhandled_queries_handler(query):
 
 
 def bot_start():
-    bot.polling()
+    try:
+        bot.polling()
+    except Exception as e:
+        logging.error("Error occurred in bot thread, quitting bot subprocess.")
+        bot.stop_polling()
+        exit()
 
 if __name__=='__main__':
-    # TODO update logger time format
-    logging.basicConfig(filename="log.log", level=logging.INFO, format='%(asctime)s %(message)s')
     logging.info("STARTED")
-    # TODO full exception logging
 
     bot_thread = mp.Process(target=bot_start)
     bot_thread.start()
@@ -158,6 +165,7 @@ if __name__=='__main__':
             cur_price = al.get_price()
             save_flag = False
             for alert in alerts.values():
+                # FIXME this really needs to be a function
                 if not alert.was_notified:
                     if alert.notify == "above":
                         if cur_price > alert.price:
@@ -176,20 +184,30 @@ if __name__=='__main__':
                         if cur_price > alert.price:
                             alert.was_notified = False
                             save_flag = True
+            print("checked")
            
             if save_flag:
                 lock.acquire()
                 al.save_alerts(alerts)
                 lock.release()
+            
+            if not bot_thread.is_alive():
+                logging.error("Bot thread stopped.")
+                cont = False
 
-            print("checked")
-            time.sleep(10)
+            time.sleep(20)
             
         except KeyboardInterrupt:
+            logging.info("Exitting...")
             cont = False
+        
+        except Exception as e:
+            logging.error("Exception occured in mainloop")
+            logging.exception(e)
 
     # After exit mainloop, quit:
     bot.stop_polling()
     print("Stopped polling")
     bot_thread.join()
+    logging.info("Program stopped successfully.")
  
