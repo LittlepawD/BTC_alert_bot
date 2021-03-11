@@ -77,15 +77,14 @@ def set_alert_step2(message: types.Message):
         bot.reply_price_setting_fail(message)
         return
 
-    lock.acquire()
-    al.save_alerts(bot.alerts)
-    lock.release()
+    safe_save(bot.alerts)
     bot.send_message(bot.alerts[new_id].owner, f"Alert set for {bot.alerts[new_id].price} EUR.")
     bot.reply_price_setting_success(message, new_id)
     # TODO add option to set one time / persistent alert
 
 @bot.callback_query_handler(func = lambda query: query.message.message_id in bot.await_callback_set)
 def alert_callback_handler(query: types.CallbackQuery):
+    # FIXME cleanup this
     bot.answer_callback_query(query.id)
     option = query.data[0]
     alert_id = int(query.data[1:])
@@ -100,10 +99,7 @@ def alert_callback_handler(query: types.CallbackQuery):
     logging.info(f"Updated {alert}: {option}.")
     bot.send_message(alert.owner, f"Saved. You will be notified {alert.notify} {alert.price} EUR.")
     bot.await_callback_set.remove(query.message.message_id)
-
-    lock.acquire()
-    al.save_alerts(bot.alerts)
-    lock.release()
+    safe_save(bot.alerts)
 
 @bot.callback_query_handler(func = lambda query: query.message.message_id in bot.await_alert_remove_set)
 def alert_remove_callback_handler(query: types.CallbackQuery):
@@ -112,10 +108,7 @@ def alert_remove_callback_handler(query: types.CallbackQuery):
     removed_alert = bot.alerts.pop(remove_alert_id)
     logging.info(f"Removed alert {removed_alert}")
     bot.reply_alert_removed(removed_alert, query)
-
-    lock.acquire()
-    al.save_alerts(bot.alerts)
-    lock.release()
+    safe_save(bot.alerts)
 
 @bot.message_handler(func = lambda message: "OwO" in message.text)
 def easter_egg(message: types.Message):
@@ -135,6 +128,11 @@ def bot_start():
         logging.error("Error occurred in bot thread, quitting bot subprocess.")
         bot.stop_polling()
         exit()
+        
+def safe_save(alerts):
+    lock.acquire()
+    al.save_alerts(alerts)
+    lock.release()
 
 if __name__=='__main__':
     logging.info("STARTED")
@@ -173,12 +171,11 @@ if __name__=='__main__':
                         if cur_price > alert.price:
                             alert.was_notified = False
                             save_flag = True
+
             print("checked")
 
             if save_flag:
-                lock.acquire()
-                al.save_alerts(alerts)
-                lock.release()
+                safe_save(alerts)
             
             if not bot_thread.is_alive():
                 logging.error("Bot thread stopped.")
@@ -193,6 +190,7 @@ if __name__=='__main__':
         except Exception as e:
             logging.error("Exception occured in mainloop")
             logging.exception(e)
+            cont = False
 
     # After exit mainloop, quit:
     bot.stop_polling()
