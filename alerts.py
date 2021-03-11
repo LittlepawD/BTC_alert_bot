@@ -5,7 +5,7 @@ URL = "https://api.coinbase.com/v2/prices/spot?currency=EUR"
 ALERTS_FILE = "alerts_dic.bin"
 
 class Alert:
-    def __init__(self, id, owner, price = None, notify = None) -> None:
+    def __init__(self, id, owner, price = None, notify = None, persistent = False) -> None:
         """ 
         Alert data structure. 
 
@@ -26,7 +26,12 @@ class Alert:
     def __repr__(self) -> str:
         return f"Alert {self.id} for {self.owner}"
 
+def generate_new_id(message):
+        new_id = message.message_id + message.chat.id
+        return new_id
+
 def convert_str_price_to_float(price: str) -> float:
+    price = price.split(" ")[0]
     if "," in price:
         price = price.replace(",", ".")
     try:

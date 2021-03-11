@@ -1,4 +1,5 @@
 import alerts as al
+import markups
 import telebot
 from telebot import types
 
@@ -18,6 +19,23 @@ class CoinBot (telebot.TeleBot):
         message = f"BTC Alert! Price is now {cur_price} EUR, {alert.notify} your {alert.price} alert."
         self.send_message(alert.owner, message)
         alert.was_notified = True
+    
+    def reply_price_setting_fail(self, original_message):
+        markup = types.ForceReply()
+        send_msg = "I can't set the alert to that price. I need you to send a positive number. Please try again"
+        sent_msg = self.reply_to(original_message, send_msg, reply_markup = markup)
+        self.alert_setting_set.remove(original_message.reply_to_message.message_id)
+        self.alert_setting_set.add(sent_msg.message_id)
+    
+    def reply_price_setting_success(self, message, new_id):
+        markup = markups.create_set_alert_markup(new_id)
+        msg = self.send_message(self.alerts[new_id].owner, "When do you want to be notified?", reply_markup=markup)
+        self.alert_setting_set.remove(message.reply_to_message.message_id)
+        self.await_callback_set.add(msg.message_id)
+    
+    def reply_alert_removed(self, alert, query):
+        self.send_message(alert.owner, f'Alert "{alert.print_for_user()}" was removed.')
+        self.await_alert_remove_set.remove(query.message.message_id)
 
     def is_set_alert_step2_reply(self, message: types.Message):
         if hasattr(message.reply_to_message, "message_id"):

@@ -1,4 +1,6 @@
 import alerts as al
+import markups
+
 import coinbot_class as cb
 import multiprocessing as mp
 import logging
@@ -15,8 +17,6 @@ bot = cb.CoinBot(T_KEY)
 lock = mp.Lock()
 logging.basicConfig(filename="log.log", level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s', datefmt='%d-%m-%y %H:%M:%S')
 
-# TODO simplify commands names
-
 @bot.message_handler(commands = ["start", "help"])
 def handle_start_help(message):
     help_text = """
@@ -25,8 +25,10 @@ def handle_start_help(message):
     Use /set_alert to set new alert.
     Use /alerts to see your active alerts.
     Use /remove_alert to remove specified alert.
+    Use /price to get current Bitcoin price.
     Use /help to display this message.
     """
+    # Add autoremove feature - removes all already notified alerts
     bot.reply_to(message, help_text)
 
 @bot.message_handler(commands = ["alerts"])
@@ -43,11 +45,8 @@ def display_alerts(message):
 
 @bot.message_handler(commands = ["remove_alert"])
 def handle_remove_alert(message: types.Message):
-    markup = types.InlineKeyboardMarkup()
     user_alerts = [alert for alert in bot.alerts.values() if alert.owner == message.chat.id]
-    for alert in user_alerts:
-        button = types.InlineKeyboardButton(text=alert.print_for_user(), callback_data=alert.id)
-        markup.row(button)
+    markup = markups.create_remove_alert_markup(user_alerts)
     msg = bot.reply_to(message, "What alert do you want to remove?", reply_markup = markup)
     bot.await_alert_remove_set.add(msg.message_id)
 
@@ -68,33 +67,22 @@ def set_alert(message):
 def set_alert_step2(message: types.Message):
     # FIXME Make this mess readable, break it down!
     try:
-        price_str = message.text.split(" ")[0]
-        price = al.convert_str_price_to_float(price_str)
-        new_id = message.message_id + message.chat.id
+        new_id = al.generate_new_id(message)
+        price = al.convert_str_price_to_float(message.text)
         bot.alerts[new_id] = al.Alert(new_id, message.chat.id, price)
         logging.info(f"New alert {bot.alerts[new_id]}")
 
-        lock.acquire()
-        al.save_alerts(bot.alerts)
-        lock.release()
-        bot.send_message(bot.alerts[new_id].owner, f"Alert set for {bot.alerts[new_id].price} EUR.")
-
-        # TODO move the following elsewhere
-        markup = types.InlineKeyboardMarkup()
-        bt_a = types.InlineKeyboardButton("Above", callback_data = "a" + str(new_id))
-        bt_b = types.InlineKeyboardButton("Below", callback_data = "b" + str(new_id))
-        markup.row(bt_a, bt_b)
-        msg = bot.send_message(bot.alerts[new_id].owner, "When do you want to be notified?", reply_markup=markup)
-        bot.await_callback_set.add(msg.message_id)
-
     except ValueError as err:
         logging.info(f"While setting new alert, following error was handled: \n{err}")
-        markup = types.ForceReply()
-        send_msg = "I can't set the alert to that price. I need you to send a positive number. Please try again"
-        sent_msg = bot.reply_to(message, send_msg, reply_markup = markup)
-        bot.alert_setting_set.add(sent_msg.message_id)
+        bot.reply_price_setting_fail(message)
+        return
 
-    bot.alert_setting_set.remove(message.reply_to_message.message_id)
+    lock.acquire()
+    al.save_alerts(bot.alerts)
+    lock.release()
+    bot.send_message(bot.alerts[new_id].owner, f"Alert set for {bot.alerts[new_id].price} EUR.")
+    bot.reply_price_setting_success(message, new_id)
+    # TODO add option to set one time / persistent alert
 
 @bot.callback_query_handler(func = lambda query: query.message.message_id in bot.await_callback_set)
 def alert_callback_handler(query: types.CallbackQuery):
@@ -111,6 +99,8 @@ def alert_callback_handler(query: types.CallbackQuery):
     alert = bot.alerts[alert_id]
     logging.info(f"Updated {alert}: {option}.")
     bot.send_message(alert.owner, f"Saved. You will be notified {alert.notify} {alert.price} EUR.")
+    bot.await_callback_set.remove(query.message.message_id)
+
     lock.acquire()
     al.save_alerts(bot.alerts)
     lock.release()
@@ -121,8 +111,7 @@ def alert_remove_callback_handler(query: types.CallbackQuery):
     remove_alert_id = int(query.data)
     removed_alert = bot.alerts.pop(remove_alert_id)
     logging.info(f"Removed alert {removed_alert}")
-    bot.send_message(removed_alert.owner, f'Alert "{removed_alert.print_for_user()}" was removed.')
-    bot.await_alert_remove_set.remove(query.message.message_id)
+    bot.reply_alert_removed(removed_alert, query)
 
     lock.acquire()
     al.save_alerts(bot.alerts)
@@ -173,7 +162,7 @@ if __name__=='__main__':
                             save_flag = True
                     elif alert.notify == "below":
                         if cur_price < alert.price:
-                            bot.notify_alert(alert, cur_price)
+                            remove = bot.notify_alert(alert, cur_price)
                             save_flag = True
                 else:
                     if alert.notify == "above":
@@ -185,7 +174,7 @@ if __name__=='__main__':
                             alert.was_notified = False
                             save_flag = True
             print("checked")
-           
+
             if save_flag:
                 lock.acquire()
                 al.save_alerts(alerts)
@@ -195,7 +184,7 @@ if __name__=='__main__':
                 logging.error("Bot thread stopped.")
                 cont = False
 
-            time.sleep(20)
+            time.sleep(10)
             
         except KeyboardInterrupt:
             logging.info("Exitting...")
