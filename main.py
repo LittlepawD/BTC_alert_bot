@@ -1,13 +1,7 @@
-<<<<<<< HEAD
-import pickle, time
-import requests as r
-import coinbot
-=======
 import alerts as al
 import markups
 
 import coinbot_class as cb
->>>>>>> b57bf72857e1cf5bdbbc9d8614142fb7f1c7eaae
 import multiprocessing as mp
 import logging
 from telebot import types
@@ -124,14 +118,12 @@ def easter_egg(message: types.Message):
 def unhandled_queries_handler(query):
     bot.answer_callback_query(query.id)
 
-
 def bot_start():
-    try:
-        bot.polling()
-    except Exception as e:
-        logging.error("Error occurred in bot thread, quitting bot subprocess.")
-        bot.stop_polling()
-        exit()
+    # polling works, but handlers are not loaded and active
+    bot.polling()
+    logging.error("Error occurred in bot thread, quitting bot subprocess.")
+    bot.stop_polling()
+    exit()
         
 def safe_save(alerts):
     lock.acquire()
@@ -141,10 +133,13 @@ def safe_save(alerts):
 if __name__=='__main__':
     logging.info("STARTED")
 
-    bot_thread = mp.Process(target=bot_start)
+    
+    # to set the same start method as on Windows 
+    mp.set_start_method("spawn", force=True)
+    bot_thread = mp.Process(target=bot.polling)
     bot_thread.start()
     print(bot.alerts)
-
+    
     cont = True
     while cont:
         try:
