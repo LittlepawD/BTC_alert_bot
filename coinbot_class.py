@@ -6,7 +6,7 @@ from telebot import types
 class CoinBot (telebot.TeleBot):
     def __init__(self, token):
         super().__init__(token)
-        self.alerts = al.load_alerts()
+        self.reload_alerts()
         # this is for saving message id used in process of setting new alert
         # TODO rename sensibly and move to separate class
         self.alert_setting_set = set()
@@ -14,6 +14,9 @@ class CoinBot (telebot.TeleBot):
 
         # this is used for removing alerts
         self.await_alert_remove_set = set()
+    
+    def reload_alerts(self):
+        self.alerts = al.load_alerts()
 
     def notify_alert(self, alert: al.Alert, cur_price):
         message = f"BTC Alert! Price is now {cur_price} EUR, {alert.notify} your {alert.price} alert."
@@ -32,6 +35,10 @@ class CoinBot (telebot.TeleBot):
         msg = self.send_message(self.alerts[new_id].owner, "When do you want to be notified?", reply_markup=markup)
         self.alert_setting_set.remove(message.reply_to_message.message_id)
         self.await_callback_set.add(msg.message_id)
+    
+    def reply_notify_setting_succes(self, alert, message):
+        self.send_message(alert.owner, f"Saved. You will be notified {alert.notify} {alert.price} EUR.")
+        self.await_callback_set.remove(message.message_id)
     
     def reply_alert_removed(self, alert, query):
         self.send_message(alert.owner, f'Alert "{alert.print_for_user()}" was removed.')

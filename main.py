@@ -33,7 +33,7 @@ def handle_start_help(message):
 
 @bot.message_handler(commands = ["alerts"])
 def display_alerts(message):
-    # reload alerts?
+    bot.reload_alerts()
     user_alerts = [alert for alert in bot.alerts.values() if alert.owner == message.chat.id]
     if len(user_alerts) == 0:
         reply = "You have not set any alerts yet. You can do so with /set_alert."
@@ -65,7 +65,6 @@ def set_alert(message):
 
 @bot.message_handler(func = bot.is_set_alert_step2_reply)
 def set_alert_step2(message: types.Message):
-    # FIXME Make this mess readable, break it down!
     try:
         new_id = al.generate_new_id(message)
         price = al.convert_str_price_to_float(message.text)
@@ -86,19 +85,18 @@ def set_alert_step2(message: types.Message):
 def alert_callback_handler(query: types.CallbackQuery):
     # FIXME cleanup this
     bot.answer_callback_query(query.id)
-    option = query.data[0]
-    alert_id = int(query.data[1:])
-    if option == "a":
-        bot.alerts[alert_id].notify = "above"
-    elif option == "b":
-        bot.alerts[alert_id].notify = "below"
-    else:
-        logging.error("Got an unexpected anwser in alert_callback_handler: {option}")
+    try:
+        notify_when, alert_persistent = markups.unpack_notify_option_data(query.data)
+        alert_id = int(query.data[2:])
+    except ValueError as err:
+        logging.error(err)
         return
     alert = bot.alerts[alert_id]
-    logging.info(f"Updated {alert}: {option}.")
-    bot.send_message(alert.owner, f"Saved. You will be notified {alert.notify} {alert.price} EUR.")
-    bot.await_callback_set.remove(query.message.message_id)
+    alert.notify = notify_when
+    alert.is_persistent = alert_persistent
+    
+    bot.reply_notify_setting_succes(alert, query.message)
+    logging.info(f"Updated {alert}: {notify_when}.")
     safe_save(bot.alerts)
 
 @bot.callback_query_handler(func = lambda query: query.message.message_id in bot.await_alert_remove_set)
@@ -151,36 +149,29 @@ if __name__=='__main__':
 
             cur_price = al.get_price()
             save_flag = False
+            to_remove = []
             for alert in alerts.values():
-                # FIXME this really needs to be a function
-                if not alert.was_notified:
-                    if alert.notify == "above":
-                        if cur_price > alert.price:
-                            bot.notify_alert(alert, cur_price)
-                            save_flag = True
-                    elif alert.notify == "below":
-                        if cur_price < alert.price:
-                            remove = bot.notify_alert(alert, cur_price)
-                            save_flag = True
-                else:
-                    if alert.notify == "above":
-                        if cur_price < alert.price:
-                            alert.was_notified = False
-                            save_flag = True
-                    elif alert.notify == "below":
-                        if cur_price > alert.price:
-                            alert.was_notified = False
-                            save_flag = True
+                notify, un_notify = al.check_alert(alert)
+                if notify:
+                    bot.notify_alert(alert, cur_price)
+                    if not alert.is_persistent:
+                        to_remove.append(alert.id)
+                    save_flag = True
+                elif un_notify:
+                    alert.was_notified = False
+                    save_flag = True
 
-            print("checked")
+            for alert_id in to_remove:
+                alerts.pop(alert_id)
 
             if save_flag:
                 safe_save(alerts)
+                # TODO make one program as one class to prevent two alert dictionaries - needs to be only one global alert list
             
             if not bot_thread.is_alive():
                 logging.error("Bot thread stopped.")
                 cont = False
-
+            logging.info("Checked")
             time.sleep(10)
             
         except KeyboardInterrupt:
