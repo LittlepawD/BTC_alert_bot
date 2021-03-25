@@ -60,7 +60,6 @@ def load_alerts(file = ALERTS_FILE) -> dict:
 def save_alerts(alerts, file=ALERTS_FILE):
     with open(file, "wb") as f:
         pickle.dump(alerts, f)
-    print("Alerts saved")
     
 
 def check_alert(alert: Alert) -> tuple:

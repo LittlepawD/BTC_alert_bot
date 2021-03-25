@@ -39,6 +39,7 @@ def display_alerts(message):
         reply = "You have not set any alerts yet. You can do so with /set_alert."
     else:
         reply = "Your alerts:\n\n"
+        # TODO Print one time/persistent alerts diferently
         for alert in user_alerts:
             reply += f"Notify {alert.notify} {alert.price} EUR\n"
     bot.reply_to(message, reply)
@@ -79,7 +80,6 @@ def set_alert_step2(message: types.Message):
     safe_save(bot.alerts)
     bot.send_message(bot.alerts[new_id].owner, f"Alert set for {bot.alerts[new_id].price} EUR.")
     bot.reply_price_setting_success(message, new_id)
-    # TODO add option to set one time / persistent alert
 
 @bot.callback_query_handler(func = lambda query: query.message.message_id in bot.await_callback_set)
 def alert_callback_handler(query: types.CallbackQuery):
@@ -121,6 +121,8 @@ def unhandled_queries_handler(query):
 
 def bot_start():
     try:
+        print("Bot polling process started")
+        logging.info("Bot polling process started")
         bot.polling()
     except Exception as e:
         logging.error("Error occurred in bot thread, quitting bot subprocess.")
@@ -130,6 +132,7 @@ def bot_start():
 def safe_save(alerts):
     lock.acquire()
     al.save_alerts(alerts)
+    logging.info("Alerts saved.")
     lock.release()
 
 if __name__=='__main__':
@@ -139,6 +142,7 @@ if __name__=='__main__':
     bot_thread.start()
     print(bot.alerts)
 
+    print("Bot mainloop running")
     cont = True
     while cont:
         try:
